@@ -14,12 +14,14 @@
 const path = require('path');
 const crypto = require('crypto');
 const express = require('express');
+const compression = require('compression');
 const bcrypt = require('bcryptjs');
 const db = require('./db');
 
 const app = express();
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
+app.use(compression());
 app.use(express.json({ limit: '256kb' }));
 
 const PORT = process.env.PORT || 3000;
@@ -983,7 +985,15 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(PUBLIC, 'index.html'));
   }
 });
-app.use(express.static(PUBLIC, { extensions: ['html'], maxAge: '1h' }));
+app.use(express.static(PUBLIC, {
+  extensions: ['html'],
+  maxAge: '1h',
+  setHeaders(res, filePath) {
+    if (filePath.endsWith('.html') || filePath.endsWith('sw.js')) res.setHeader('Cache-Control', 'no-cache');
+    else if (filePath.includes('/icons/')) res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
+    else res.setHeader('Cache-Control', 'public, max-age=3600');
+  }
+}));
 app.get('*', (req, res, next) => {
   if (req.path.startsWith('/api/')) return next();
   res.sendFile(path.join(PUBLIC, 'index.html'));
