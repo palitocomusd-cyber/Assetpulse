@@ -1,0 +1,21 @@
+name: keep-alive
+
+# Pings the deployed app so the free Render instance never idles into a cold start.
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping health endpoint
+        run: |
+          for i in 1 2 3; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 45 https://assetpulse-bszi.onrender.com/healthz || echo 000)
+            echo "attempt $i -> HTTP $code"
+            [ "$code" = "200" ] && exit 0
+            sleep 15
+          done
+          echo "keep-alive finished (service may be starting)"
