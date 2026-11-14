@@ -1,5 +1,8 @@
 # AssetPulse
 
+**Live:** https://assetpulse-bszi.onrender.com · custom domain target: `assetpulse.app`
+
+
 Investor dashboard + admin console with **real accounts**, a **server-side ledger**, **PostgreSQL persistence**, **Brevo email**, **PWA install** and **device notifications**.
 
 Everything that used to live in `localStorage` now lives in the database behind an authenticated API, so a user sees the same balance, positions and history on every browser and device.
@@ -142,7 +145,15 @@ Set `BREVO_TEST_MODE=true` to log instead of sending while you set up a verified
 
 ---
 
-## 9. Admin console
+## 9. Always-on behaviour and no-interruption UX
+
+- **Any device, any time** — accounts live in Postgres, sessions are 30-day HttpOnly cookies. There is no device registration or approval step: open the link, sign in or sign up, and the account works on every device.
+- **Typing is never lost** — every form autosaves to a draft in `localStorage` (passwords and PINs excluded). A page refresh, a background state refresh or a route change restores the draft, and drafts are cleared only after a successful submit.
+- **Background refresh never interrupts** — the 60-second poll skips entirely while a modal is open or a field has focus (`userIsBusy()`), so a re-render can never wipe what you are typing.
+- **Stay alive** — `.github/workflows/keepalive.yml` pings `/healthz` every 10 minutes so the free Render instance does not idle into a cold start. For production traffic, upgrade the service off the free plan (which sleeps after ~15 minutes idle).
+- **Fast** — gzip compression, 1-hour static caching (7 days for icons), a service worker app-shell cache, and a per-action state response so the client never recomputes balances.
+
+## 10. Admin console
 
 | Page | Capabilities |
 |---|---|
@@ -159,7 +170,7 @@ Set `BREVO_TEST_MODE=true` to log instead of sending while you set up a verified
 
 ---
 
-## 10. Local development
+## 11. Local development
 
 ```bash
 npm install
