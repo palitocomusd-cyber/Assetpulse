@@ -95,6 +95,55 @@ async function act(type, payload) {
 }
 function accrue() { /* accrual runs on the server */ }
 
+/* ---------------- form drafts (survive re-render & refresh) ---------------- */
+const DRAFT_PREFIX = 'ap_draft:';
+const DRAFT_SKIP = /^(password|pin|pin2|pw|confirm)$/i;
+
+function draftKey(f) { return DRAFT_PREFIX + (f.dataset.form || 'form'); }
+function collectDraft(f) {
+  const data = {};
+  f.querySelectorAll('input[name],select[name],textarea[name]').forEach(el => {
+    if (!el.name || DRAFT_SKIP.test(el.name) || el.type === 'password' || el.type === 'file') return;
+    if (el.type === 'checkbox') data[el.name] = !!el.checked;
+    else if (el.type === 'radio') { if (el.checked) data[el.name] = el.value; }
+    else data[el.name] = el.value;
+  });
+  return data;
+}
+function saveDraft(f) {
+  try {
+    const data = collectDraft(f);
+    if (!Object.keys(data).length) return;
+    localStorage.setItem(draftKey(f), JSON.stringify(data));
+  } catch (e) { }
+}
+function restoreDraft(f) {
+  try {
+    const raw = localStorage.getItem(draftKey(f));
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    Object.keys(data).forEach(name => {
+      const el = f.querySelector('[name="' + name.replace(/"/g, '\\"') + '"]');
+      if (!el || el.type === 'password') return;
+      if (el.type === 'checkbox') el.checked = !!data[name];
+      else if (el.type === 'radio') el.checked = el.value === data[name];
+      else if (document.activeElement !== el) el.value = data[name];
+    });
+  } catch (e) { }
+}
+function clearDraft(f) { try { localStorage.removeItem(draftKey(f)); } catch (e) { } }
+function restoreAllDrafts() {
+  document.querySelectorAll('form[data-form]').forEach(restoreDraft);
+}
+function userIsBusy() {
+  if (document.querySelector('#modal-root.open')) return true;
+  const a = document.activeElement;
+  if (!a) return false;
+  if (/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) return true;
+  if (a.isContentEditable) return true;
+  return false;
+}
+
 /* ---------------- feedback ---------------- */
 function toast(msg, kind = 'ok') {
   const box = qs('#toasts');
@@ -1238,6 +1287,7 @@ function render() {
   }
   const fn = VIEWS[r.view];
   root.innerHTML = fn ? fn(r) : viewNotFound();
+  restoreAllDrafts();
 }
 function renderKeep(id) {
   const cur = document.getElementById(id);
@@ -1411,8 +1461,9 @@ document.addEventListener('submit', e => {
 
   const submit = async (fn, errBox) => {
     busy(true);
+    const keepDraft = f.dataset.form === 'admin-notify' || f.dataset.form === 'settings';
     if (errBox) { const b = qs(errBox); if (b) b.classList.remove('on'); }
-    try { await fn(); }
+    try { await fn(); clearDraft(f); }
     catch (err) {
 
       if (errBox) {
@@ -1617,11 +1668,15 @@ document.addEventListener('submit', e => {
 
 /* ---------------- inputs ---------------- */
 document.addEventListener('input', e => {
+  const form = e.target.closest('form[data-form]');
+  if (form) saveDraft(form);
   if (e.target.id === 'txSearch') { uiState.txQ = e.target.value; renderKeep('txSearch'); }
   if (e.target.id === 'userSearch') { uiState.userQ = e.target.value; renderKeep('userSearch'); }
   if (e.target.id === 'adminTxSearch') { uiState.adminTxQ = e.target.value; renderKeep('adminTxSearch'); }
 });
 document.addEventListener('change', e => {
+  const dform = e.target.closest('form[data-form]');
+  if (dform) saveDraft(dform);
   if (e.target.id === 'txType') { uiState.txType = e.target.value; render(); }
   if (e.target.id === 'adminTxType') { uiState.adminTxType = e.target.value; render(); }
   if (e.target.id === 'emailTarget') { const picker = document.getElementById('emailPicker'); if (picker) picker.style.display = e.target.value === 'selected' ? 'block' : 'none'; }
@@ -1818,12 +1873,13 @@ async function sendEventEmail(event, payload) {
   // keep balances and queues fresh while the tab is open
   setInterval(() => {
     if (!me() || document.visibilityState !== 'visible') return;
-    refreshState().then(() => { const a = document.activeElement; render(); if (a && a.id) { const n = document.getElementById(a.id); if (n && n.focus) n.focus(); } }).catch(() => { });
+    if (userIsBusy()) return;                 // never interrupt typing, dialogs or open forms
+    refreshState().then(() => { if (!userIsBusy()) render(); }).catch(() => { });
   }, 60000);
 })();
 window.addEventListener('hashchange', () => {
   render();
   window.scrollTo({ top: 0, behavior: 'instant' in window ? 'instant' : 'auto' });
-  if (me()) refreshState().then(() => render()).catch(() => { });
+  if (me()) refreshState().then(() => { if (!userIsBusy()) render(); }).catch(() => { });
 });
 
